@@ -8,13 +8,16 @@ import time
 # Nombre del archivo donde se guardarán las preguntas
 QUESTIONS_FILE = 'preguntas.json'
 
+# --- NUEVO: CONTRASEÑA DE ACCESO PARA DOCENTES ---
+# ¡IMPORTANTE! Cambia esta contraseña por una más segura.
+TEACHER_PASSWORD = "docente123"
+
 def load_questions():
     """Carga las preguntas desde el archivo JSON."""
     try:
         with open(QUESTIONS_FILE, 'r', encoding='utf-8') as f:
             return json.load(f)
     except (FileNotFoundError, json.JSONDecodeError):
-        # Si el archivo no existe o está vacío, devuelve una lista vacía
         return []
 
 def save_questions(questions):
@@ -23,7 +26,6 @@ def save_questions(questions):
         json.dump(questions, f, indent=4, ensure_ascii=False)
 
 # Cargar la base de datos de preguntas al iniciar la app
-# Usamos st.session_state para no recargar el archivo en cada interacción
 if 'questions_db' not in st.session_state:
     st.session_state.questions_db = load_questions()
 
@@ -34,12 +36,43 @@ st.set_page_config(page_title="App de Exámenes", layout="wide")
 st.sidebar.title("🎓 App de Exámenes")
 st.sidebar.markdown("Creada con Streamlit")
 
-# Navegación principal en la barra lateral
-page = st.sidebar.radio("Ir a:", ["👨‍🏫 Panel para Docentes", "👨‍🎓 Examen para Estudiantes"])
+# --- NUEVO: LÓGICA DE AUTENTICACIÓN ---
 
-# --- SECCIÓN 1: PANEL PARA DOCENTES ---
+# Inicializar el estado de autenticación
+if 'teacher_authenticated' not in st.session_state:
+    st.session_state.teacher_authenticated = False
+
+# Mostrar formulario de login si no está autenticado
+if not st.session_state.teacher_authenticated:
+    with st.sidebar.expander("Acceso para Docentes", expanded=True):
+        password_input = st.text_input("Contraseña:", type="password", key="login_password")
+        if st.sidebar.button("Ingresar"):
+            if password_input == TEACHER_PASSWORD:
+                st.session_state.teacher_authenticated = True
+                st.sidebar.success("¡Acceso concedido!")
+                st.rerun()
+            else:
+                st.sidebar.error("Contraseña incorrecta.")
+else:
+    # Si está autenticado, mostrar botón de cerrar sesión
+    st.sidebar.success("Sesión de Docente Activada")
+    if st.sidebar.button("Cerrar Sesión"):
+        del st.session_state.teacher_authenticated
+        st.rerun()
+
+# --- NUEVO: CONTROL DE NAVEGACIÓN ---
+# Las opciones de navegación dependen del estado de autenticación
+page_options = ["👨‍🎓 Examen para Estudiantes"]
+if st.session_state.teacher_authenticated:
+    page_options.insert(0, "👨‍🏫 Panel para Docentes")
+
+page = st.sidebar.radio("Ir a:", page_options)
+
+
+# --- SECCIÓN 1: PANEL PARA DOCENTES (AHORA PROTEGIDA) ---
 
 if page == "👨‍🏫 Panel para Docentes":
+    # Esta sección solo es visible si teacher_authenticated es True
     st.header("👨‍🏫 Panel para Docentes")
     st.markdown("Aquí puedes agregar nuevas preguntas al banco de datos.")
 
@@ -47,7 +80,6 @@ if page == "👨‍🏫 Panel para Docentes":
         with st.form("add_question_form"):
             st.subheader("Detalles de la Pregunta")
             
-            # Campos del formulario
             question_text = st.text_area("Texto de la pregunta:", height=100)
             category = st.text_input("Categoría (ej: Matemáticas, Historia):")
             
@@ -61,7 +93,6 @@ if page == "👨‍🏫 Panel para Docentes":
             
             submit_button = st.form_submit_button("Agregar Pregunta")
 
-            # Lógica al enviar el formulario
             if submit_button:
                 if question_text and category and option_a and option_b and option_c and option_d:
                     new_question = {
@@ -78,7 +109,7 @@ if page == "👨‍🏫 Panel para Docentes":
                     st.session_state.questions_db.append(new_question)
                     save_questions(st.session_state.questions_db)
                     st.success("¡Pregunta agregada exitosamente!")
-                    st.rerun() # Recarga la app para actualizar la lista
+                    st.rerun()
                 else:
                     st.error("Por favor, completa todos los campos.")
 
@@ -88,7 +119,6 @@ if page == "👨‍🏫 Panel para Docentes":
     if not st.session_state.questions_db:
         st.info("Aún no hay preguntas. ¡Agrega algunas usando el formulario de arriba!")
     else:
-        # Mostrar las preguntas existentes
         for i, q in enumerate(st.session_state.questions_db):
             with st.expander(f"{i+1}. {q['question']} ({q['category']})"):
                 st.write(f"**A:** {q['options']['A']}")
@@ -98,19 +128,17 @@ if page == "👨‍🏫 Panel para Docentes":
                 st.success(f"**Respuesta Correcta:** {q['correct']}")
 
 
-# --- SECCIÓN 2: EXAMEN PARA ESTUDIANTES ---
+# --- SECCIÓN 2: EXAMEN PARA ESTUDIANTES (SIEMPRE PÚBLICA) ---
 
 elif page == "👨‍🎓 Examen para Estudiantes":
     st.header("👨‍🎓 Examen para Estudiantes")
     
-    # Verificar si hay preguntas disponibles
     if not st.session_state.questions_db:
         st.warning("El banco de preguntas está vacío. Por favor, contacta a un docente.")
         st.stop()
 
-    # --- LÓGICA DEL EXAMEN ---
+    # --- LÓGICA DEL EXAMEN (sin cambios en esta parte) ---
     
-    # Inicializar variables de sesión si no existen
     if 'quiz_started' not in st.session_state:
         st.session_state.quiz_started = False
     if 'quiz_finished' not in st.session_state:
@@ -118,7 +146,6 @@ elif page == "👨‍🎓 Examen para Estudiantes":
     if 'score' not in st.session_state:
         st.session_state.score = 0
 
-    # --- PASO 1: CONFIGURACIÓN DEL EXAMEN ---
     if not st.session_state.quiz_started and not st.session_state.quiz_finished:
         st.subheader("Configura tu examen")
         
@@ -139,17 +166,15 @@ elif page == "👨‍🎓 Examen para Estudiantes":
             start_button = st.form_submit_button("Comenzar Examen")
             
             if start_button and name and grade:
-                # Preparar las preguntas para el examen
                 questions_for_quiz = st.session_state.questions_db.copy()
                 if randomize_questions:
                     random.shuffle(questions_for_quiz)
                 questions_for_quiz = questions_for_quiz[:num_questions]
                 
-                # Guardar estado del examen
                 st.session_state.quiz_config = {
                     'name': name,
                     'grade': grade,
-                    'time_limit': time_limit * 60, # Convertir a segundos
+                    'time_limit': time_limit * 60,
                     'randomize_options': randomize_options
                 }
                 st.session_state.questions_for_quiz = questions_for_quiz
@@ -160,9 +185,7 @@ elif page == "👨‍🎓 Examen para Estudiantes":
                 st.session_state.start_time = time.time()
                 st.rerun()
 
-    # --- PASO 2: DESARROLLO DEL EXAMEN ---
     if st.session_state.quiz_started and not st.session_state.quiz_finished:
-        # Lógica de tiempo
         elapsed_time = time.time() - st.session_state.start_time
         remaining_time = st.session_state.quiz_config['time_limit'] - elapsed_time
         
@@ -173,32 +196,26 @@ elif page == "👨‍🎓 Examen para Estudiantes":
         
         st.info(f"Tiempo restante: {int(remaining_time // 60):02d}:{int(remaining_time % 60):02d}")
         
-        # Mostrar la pregunta actual
         current_q_data = st.session_state.questions_for_quiz[st.session_state.current_question_index]
         question_index = st.session_state.current_question_index + 1
         
         st.subheader(f"Pregunta {question_index} de {len(st.session_state.questions_for_quiz)}")
         st.write(current_q_data['question'])
         
-        # Preparar opciones
         options = current_q_data['options']
         correct_key = current_q_data['correct']
         
         if st.session_state.quiz_config['randomize_options']:
-            # Aleatorizar opciones manteniendo cuál es la correcta
             items = list(options.items())
             random.shuffle(items)
             options = dict(items)
-            # Encontrar la nueva clave de la respuesta correcta
             for key, value in options.items():
                 if value == current_q_data['options'][correct_key]:
                     correct_key = key
                     break
         
-        # Mostrar opciones como radio buttons
         answer = st.radio("Selecciona una respuesta:", list(options.values()), key=f"q_{question_index}")
         
-        # Botón para siguiente pregunta
         col1, col2 = st.columns([1, 1])
         with col1:
             if st.button("Anterior", disabled=(st.session_state.current_question_index == 0)):
@@ -207,51 +224,23 @@ elif page == "👨‍🎓 Examen para Estudiantes":
         with col2:
             button_text = "Siguiente" if question_index < len(st.session_state.questions_for_quiz) else "Finalizar Examen"
             if st.button(button_text):
-                # Guardar respuesta
                 selected_key = None
                 for key, value in options.items():
                     if value == answer:
                         selected_key = key
                         break
                 
-                st.session_state.answers[st.session_state.current_question_index] = selected_key
+                st.session_state.answers[st.session_state.current_question_index] = answer # Guardamos el valor, no la clave
                 
-                # Verificar si es la última pregunta
                 if question_index >= len(st.session_state.questions_for_quiz):
                     st.session_state.quiz_finished = True
                 else:
                     st.session_state.current_question_index += 1
                 st.rerun()
 
-    # --- PASO 3: RESULTADOS FINALES ---
     if st.session_state.quiz_finished:
         st.header("🎉 Examen Finalizado")
         
-        # Calcular puntuación
-        score = 0
-        for i, q_data in enumerate(st.session_state.questions_for_quiz):
-            correct_answer_key = q_data['correct']
-            user_answer_key = st.session_state.answers.get(i)
-            
-            # Si las opciones fueron aleatorizadas, necesitamos comparar los valores, no las claves
-            if st.session_state.quiz_config['randomize_options']:
-                correct_answer_value = q_data['options'][correct_answer_key]
-                user_answer_value = None
-                if user_answer_key:
-                    # Buscar el valor de la respuesta del usuario en las opciones originales
-                    for key, value in q_data['options'].items():
-                        # Tenemos que encontrar la clave original que corresponde al valor seleccionado
-                        # Esto es un poco complejo, una forma más fácil es guardar el valor directamente
-                        # Simplifiquemos: guardaremos el valor de la respuesta, no la clave.
-                        # Modifiquemos la lógica de guardado de respuesta.
-                        pass # Revisaremos esto abajo.
-            else:
-                if user_answer_key == correct_answer_key:
-                    score += 1
-        
-        # Simplifiquemos el cálculo de la puntuación para que sea más robusto
-        # Vamos a guardar el texto de la respuesta, no la clave.
-        # (Esta es una corrección sobre la marcha que haré en el código final)
         final_score = 0
         for i, q_data in enumerate(st.session_state.questions_for_quiz):
             correct_answer_text = q_data['options'][q_data['correct']]
@@ -285,7 +274,6 @@ elif page == "👨‍🎓 Examen para Estudiantes":
                     st.error("❌ Incorrecto")
 
         if st.button("Realizar otro examen"):
-            # Resetear el estado del examen
             for key in ['quiz_started', 'quiz_finished', 'score', 'questions_for_quiz', 'current_question_index', 'answers', 'quiz_config', 'start_time']:
                 if key in st.session_state:
                     del st.session_state[key]

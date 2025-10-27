@@ -133,8 +133,13 @@ if page == "👨‍🏫 Panel para Docentes":
 elif page == "👨‍🎓 Examen para Estudiantes":
     st.header("👨‍🎓 Examen para Estudiantes")
     
-    if not st.session_state.questions_db:
-        st.warning("El banco de preguntas está vacío. Por favor, contacta a un docente.")
+    # --- NUEVA COMPROBACIÓN MÁS ROBUSTA Y EXPLÍCITA ---
+    # Nos aseguramos de que la base de datos exista, sea una lista y no esté vacía.
+    questions_db = st.session_state.get('questions_db')
+    
+    if not isinstance(questions_db, list) or len(questions_db) == 0:
+        st.warning("El banco de preguntas está vacío o no es válido. Por favor, contacta a un docente para que agregue preguntas.")
+        st.info(f"Para depuración: El estado actual de 'questions_db' es: {questions_db}")
         st.stop()
 
     # --- LÓGICA DEL EXAMEN ---
@@ -151,37 +156,36 @@ elif page == "👨‍🎓 Examen para Estudiantes":
     if not st.session_state.quiz_started and not st.session_state.quiz_finished:
         st.subheader("Configura tu examen")
         
-        # Asegúrate de que todos los widgets estén dentro del 'with st.form'
         with st.form("quiz_config_form"):
             name = st.text_input("Tu Nombre Completo:")
             grade = st.text_input("Tu Grado/Sección:")
             
+            # Usamos una variable para el número total de preguntas para mayor claridad y seguridad
+            total_preguntas_disponibles = len(st.session_state.questions_db)
+            
+            # El slider ahora está protegido por la comprobación inicial, así que `total_preguntas_disponibles` es al menos 1.
             num_questions = st.slider(
                 "Número de preguntas a responder:",
                 min_value=1,
-                max_value=len(st.session_state.questions_db),
-                value=min(5, len(st.session_state.questions_db))
+                max_value=total_preguntas_disponibles,
+                value=min(5, total_preguntas_disponibles)
             )
             time_limit = st.number_input("Límite de tiempo (minutos):", min_value=1, value=5)
             randomize_questions = st.checkbox("Aleatorizar el orden de las preguntas", value=True)
             randomize_options = st.checkbox("Aleatorizar el orden de las opciones", value=True)
             
-            # ¡ESTA ES LA LÍNEA CLAVE! El botón de envío debe estar aquí.
             start_button = st.form_submit_button("Comenzar Examen")
             
-            # La lógica se ejecuta solo cuando se presiona el botón
             if start_button and name and grade:
-                # Preparar las preguntas para el examen
                 questions_for_quiz = st.session_state.questions_db.copy()
                 if randomize_questions:
                     random.shuffle(questions_for_quiz)
                 questions_for_quiz = questions_for_quiz[:num_questions]
                 
-                # Guardar estado del examen
                 st.session_state.quiz_config = {
                     'name': name,
                     'grade': grade,
-                    'time_limit': time_limit * 60, # Convertir a segundos
+                    'time_limit': time_limit * 60,
                     'randomize_options': randomize_options
                 }
                 st.session_state.questions_for_quiz = questions_for_quiz
@@ -194,7 +198,6 @@ elif page == "👨‍🎓 Examen para Estudiantes":
 
     # --- PASO 2: DESARROLLO DEL EXAMEN (sin cambios aquí) ---
     if st.session_state.quiz_started and not st.session_state.quiz_finished:
-        # Lógica de tiempo
         elapsed_time = time.time() - st.session_state.start_time
         remaining_time = st.session_state.quiz_config['time_limit'] - elapsed_time
         
@@ -205,32 +208,26 @@ elif page == "👨‍🎓 Examen para Estudiantes":
         
         st.info(f"Tiempo restante: {int(remaining_time // 60):02d}:{int(remaining_time % 60):02d}")
         
-        # Mostrar la pregunta actual
         current_q_data = st.session_state.questions_for_quiz[st.session_state.current_question_index]
         question_index = st.session_state.current_question_index + 1
         
         st.subheader(f"Pregunta {question_index} de {len(st.session_state.questions_for_quiz)}")
         st.write(current_q_data['question'])
         
-        # Preparar opciones
         options = current_q_data['options']
         correct_key = current_q_data['correct']
         
         if st.session_state.quiz_config['randomize_options']:
-            # Aleatorizar opciones manteniendo cuál es la correcta
             items = list(options.items())
             random.shuffle(items)
             options = dict(items)
-            # Encontrar la nueva clave de la respuesta correcta
             for key, value in options.items():
                 if value == current_q_data['options'][correct_key]:
                     correct_key = key
                     break
         
-        # Mostrar opciones como radio buttons
         answer = st.radio("Selecciona una respuesta:", list(options.values()), key=f"q_{question_index}")
         
-        # Botón para siguiente pregunta
         col1, col2 = st.columns([1, 1])
         with col1:
             if st.button("Anterior", disabled=(st.session_state.current_question_index == 0)):
@@ -239,10 +236,8 @@ elif page == "👨‍🎓 Examen para Estudiantes":
         with col2:
             button_text = "Siguiente" if question_index < len(st.session_state.questions_for_quiz) else "Finalizar Examen"
             if st.button(button_text):
-                # Guardar la respuesta (guardamos el texto, no la clave)
                 st.session_state.answers[st.session_state.current_question_index] = answer
                 
-                # Verificar si es la última pregunta
                 if question_index >= len(st.session_state.questions_for_quiz):
                     st.session_state.quiz_finished = True
                 else:
@@ -253,7 +248,6 @@ elif page == "👨‍🎓 Examen para Estudiantes":
     if st.session_state.quiz_finished:
         st.header("🎉 Examen Finalizado")
         
-        # Calcular puntuación
         final_score = 0
         for i, q_data in enumerate(st.session_state.questions_for_quiz):
             correct_answer_text = q_data['options'][q_data['correct']]
@@ -287,7 +281,6 @@ elif page == "👨‍🎓 Examen para Estudiantes":
                     st.error("❌ Incorrecto")
 
         if st.button("Realizar otro examen"):
-            # Resetear el estado del examen
             for key in ['quiz_started', 'quiz_finished', 'score', 'questions_for_quiz', 'current_question_index', 'answers', 'quiz_config', 'start_time']:
                 if key in st.session_state:
                     del st.session_state[key]
